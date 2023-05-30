@@ -1,0 +1,876 @@
+---
+title: "가설1_통계"
+author: "김연진"
+date: "2023-05-11"
+output: html_document
+---
+
+
+# 금주금주 통계
+
+
+## 가설1: 1인가구 비율과 음주운전 횟수는 양의 상관관계가 있다. (단순선형회귀분석)
+
+### 1A 가설 세우기
+독립변수: 연간 1인가구 비율 <br/>
+종속변수: 연간 음주운전 횟수 <br/>
+
+h0: 1인가구 비율에 따라 음주운전 횟수에 상관관계가 있다. <br/>
+h1: 1인가구 비율에 따라 음주운전 횟수에 상관관계가 없다. 
+
+
+## 1B 데이터 불러오기
+
+
+```{r}
+data1 <- read.csv("../data/가설1_데이터.csv")
+data1$일인가구.비율 <- as.numeric(as.character(data1$일인가구.비율))
+data1$음주운전.횟수 <- as.numeric(as.character(data1$음주운전.횟수))
+
+# data1 <- data1[-6,]
+data1
+sapply(data1, class)
+```
+
+
+## 1C 결측치 채우기
+
+
+
+
+```{r}
+# 음주운전횟수로 일인가구 비율 회귀
+mod <- lm(일인가구.비율 ~ 연도, data= data1)
+
+
+# 설명력 97.7%, p < 0.05
+summary(mod)
+```
+
+
+
+```{r}
+# 일인가구 비율을 예측
+alone_pred <- predict(mod, data1)
+
+# alone_imputed 열을 만든 후 NA일 경우 예측치로 채우고 아닐 경우 원래 숫자로 채우기
+data1$alone_imputed <- round(ifelse(is.na(data1$일인가구.비율),alone_pred, data1$일인가구.비율),1)
+```
+
+
+## 1D 음주운전수(종속변수) 정규성 검사
+h0: 음주운전수는 정규분포이다. <br/>
+h1: 음주운전수는 정규분포가 아니다.
+
+```{r}
+## 잔차
+shapiro.test(data1$음주운전.횟수)
+# p-value가 0.5487로 0.05 이상이므로 h0가 채택되어 정규성을 띈다.
+```
+
+
+
+### 1E 단순선형회귀 실행
+
+```{r}
+# 가설1 회귀분석
+lr_1 <- lm(음주운전.횟수 ~ alone_imputed, data= data1)
+
+
+# 회귀 통계량 (cookbook p378)
+lr_1
+
+# 회귀식은 다음과 같음을 알 수 있다: y= -22449x + 834804
+
+## R^2, F 통계량, 잔차의 표준 오차 등을 요약
+summary(lr_1)
+
+# 모델의 설명력: 88.18% ,  p값: 0.0000132
+
+```
+
+위의 분석에 따르면 모형의 설명도(adjusted R-squared)는 0.8818이며 p값이 0.0000132이므로 모형이 적합하다는 것을 알 수 있다. <br/>
+회귀식은 다음과 같음을 알 수 있다: 'y= -22449x + 834804' <br/>
+일인가구 비율이 1% 증가하면 약 2만2천회의 음주운전 건수가 줄어드는 것을 확인할 수 있다. <br/>
+2020년의 총 음주운전 횟수가 12만회인 것을 감안하면 2만5천회는 약 18%에 육박하므로 굉장히 큰 영향력을 가지고 있음을 알 수 있다.
+
+
+
+```{r}
+## 계수들의 신뢰구간
+confint(lr_1)
+
+# 회귀식의 신뢰구간이 -2만8천에서 -만7천 사이라는 것을 알 수 있다. (회귀식의 기울기가 95%의 확률로 -2만8천~만7천)
+
+## 잔차
+residuals(lr_1)
+
+
+## 분산분석표
+anova(lr_1)
+
+
+```
+
+
+### 1F 선형회귀 진단하기 (cookbook p414)
+해당 모델이 좋은 모형인지 확인해보자.
+아래 그래프는 다음과 같은 이유로 잘 fitted된 회귀 진단 그래프들을 보여준다고 할 수 있다:
+
+#### 잔차의 선형성
+```{r}
+plot(lr_1,1)
+```
+
+#### 잔차의 정규성
+```{r}
+
+plot(lr_1,2)
+abline(lr_1, col='blue')
+
+# p-value가 0.5487로 0.05 이상이므로 h0가 채택되어 정규성을 띈다.
+shapiro.test(lr_1$residuals)
+
+# 정규 Q-Q그래프의 점들은 어느 정도 선에 맞게 분포하므로, 잔차들이 정규분포를 따른다는 사실을 알려줍니다.
+
+```
+
+
+#### 잔차의 등분산성
+```{r}
+
+plot(lr_1,3)
+# 척도-위치 그래프와 잔차 대 지렛대값 그래프를 보면 점들이 중심에서 크게 떨어지지 않게 모여 있다.
+summary(lr_1)
+
+```
+
+
+
+```{r}
+# 잔차에 이상치는 없음을 확인할 수 있다.
+boxplot(residuals(lr_1))
+```
+
+
+
+## 가설2: 경제성장률/실업률/1인가구 비율은 각나이대별 음주운전 빈도에 유의미한 영향을 끼친다. (다중회귀분석)
+
+
+```{r}
+# 데이터 불러오기
+
+data3 <- read.csv("../data/가설3_데이터.csv")
+data3
+```
+
+```{r}
+# 각 열 data type 확인
+sapply(data3, class)
+```
+
+
+
+### 2A 결측치 채우기
+
+회귀대체를 사용하여 2011~2014년의 결측치를 채워넣었습니다.
+
+#### 회귀대체법(SI)
+
+결측 일인가구 비율을 회귀모형을 통해 추정하는 방법이다. 아래의 코드는 연도에 따른 일인가구 비율을 회귀분석하여 일인가구 비율을 예측하였다. 해당 데이터에서의 일인가구 비율은 일정하게 증가하고 있는 추세이므로 회귀대체법이 적합하다고 판단했다. summary(mod)를 통해 확인해보아도 회귀 분석 모델의 설명도는 97%, p-값은 0에 가까우므로 해당 방법이 적합하다는 것을 알 수 있다. <br/>
+
+참고: http://ds.sumeun.org/?p=2582
+
+
+```{r}
+# 음주운전횟수로 일인가구 비율 회귀
+mod <- lm(일인가구.비율 ~ 연도, data= data3)
+
+summary(mod)
+
+# 예측할 
+
+# 일인가구 비율을 예측
+alone_pred <- predict(mod, data3)
+
+alone_pred
+
+data3$alone_imputed <- round(ifelse(is.na(data3$일인가구.비율),alone_pred, data3$일인가구.비율),1)
+
+data3
+```
+
+
+
+### 2B 이상치 처리
+
+상하위 0.3% 극단치 또는 상자그림 1.5 IQR 벗어나면 극단치로 판단했습니다. 일단 극단치는 NA처리하지 않았습니다. 데이터가 적기 때문입니다. <br/>
+
+참고:  http://rstudio-pubs-static.s3.amazonaws.com/332160_4955e7cbc72f4f6fb0f36a927f7d18b2.html
+
+```{r}
+# 일인가구 비율은 이상치가 없음
+boxplot(data3$alone_imputed)
+# 실업률은 이상치 없음
+boxplot(data3$실업률)
+# 경제성장률은 이상치가 2010년과(상단 이상치) 2020년(하단 이상치)
+boxplot(data3$경제성장률)
+```
+
+
+
+### 2C 전연령대 일인가구 비율, 실업률, 경제성장률과 음주운전 횟수의 다중회귀분석
+
+
+#### 데이터 표준화
+
+```{r}
+# standardized percentage living alone
+data3$alone <- (data3$alone_imputed - mean(data3$alone_imputed)) / sd(data3$alone_imputed) 
+# standardized unemployment rate
+data3$unemployed <- (data3$실업률 - mean(data3$실업률) / sd(data3$실업률))
+# economic growth rate
+data3$egr <- (data3$경제성장률-mean(data3$경제성장률)/sd(data3$경제성장률))
+```
+
+
+#### 다중선형회귀
+
+표준화 처리 후 다중선형회귀식은 다음과 같음을 알 수 있습니다: y = -43027*(일인가구수) -23981*(실업률) + 6344 * (경제성장률) -21079 <br/>
+이를 통해 일인가구수, 실업률, 경제성장률 순으로 음주운전 횟수가 독립변수의 변동에 예민하게 반응한다는 것을 알 수 있습니다.
+
+```{r}
+mlr <- lm(음주운전수 ~ alone + unemployed + egr , data = data3)
+summary(mlr)
+```
+
+
+### 2D 변수 선택
+전연령대에서는 일인가구 비율 변수만 사용할 것을 stepAIC()와 anova() 함수를 사용하여 추천 받았습니다.
+
+```{r}
+library(MASS)
+mlr.stp <- stepAIC(mlr,direction='both')
+
+mlr.stp$anova
+```
+
+
+### 2C 다중회귀 진단
+
+해당 모델이 좋은 모형인지 확인해보자.
+아래 그래프는 다음과 같은 이유로 잘 fitted된 회귀 진단 그래프들을 보여준다고 할 수 있다:
+
+#### 잔차의 선형성
+```{r}
+plot(mlr,1)
+```
+
+#### 잔차의 정규성
+```{r}
+
+plot(mlr,2)
+
+# p-value가 0.22로 0.05 이상이므로 h0가 채택되어 정규성을 띈다.
+shapiro.test(mlr$residuals)
+
+# 정규 Q-Q그래프의 점들은 어느 정도 선에 맞게 분포하므로, 잔차들이 정규분포를 따른다는 사실을 알려줍니다.
+```
+
+
+
+#### 잔차의 등분산성
+```{r}
+
+plot(mlr,3)
+# 척도-위치 그래프와 잔차 대 지렛대값 그래프를 보면 점들이 중심에서 크게 떨어지지 않게 모여 있다.
+summary(mlr)
+
+```
+
+
+```{r}
+data3 <- data3[-c(2,6,10),]
+data3
+mlr <- lm(음주운전수 ~ alone + unemployed + egr , data = data3)
+summary(mlr)
+
+data3
+```
+
+```{r}
+# 잔차 확인 후 그래프 다시 확인하기
+# 0.5로 0.05보다 크므로 등분산성을 만족한다
+library(car)
+ncvTest(mlr)
+plot(mlr, 3)
+
+#잔차의 적합성
+plot(mlr, 1)
+#잔차의 정규성
+shapiro.test(mlr$residuals)
+plot(mlr, 2)
+
+#잔차의 극단치
+plot(mlr)
+
+#summary(mlr)
+sort(mlr$residuals,decreasing = T)
+
+```
+
+
+
+
+### 2D (다중)공선성 진단
+
+
+(다중)공선성이 있으면: <br/>
+- 계수 추정이 잘 되지 않거나 불안정해져서 데이터가 약간만 바뀌어도 추정치가 크게 달라질 수 있다.
+- 계수가 통계적으로 유의미하지 않은 것처럼 나올 수 있다.
+
+<br/>
+다중 공선성을 진단하기 위해 분산팽창계수(VIF, Variance Inflation Factor)를 구하여 판단합니다. 엄밀한 기준은 없으나 보통 10보다 크면 다중공선성이 있다고 판단합니다. (5를 기준으로 하기도 함)
+<br/>
+출처: https://mindscale.kr/course/basic-stat-r/collinearity/
+
+VIF 이외로 다중공선성을 진단하는 방법은 상관계수, 공차, 상태지수가 있습니다. <br/>
+출처: https://www.youtube.com/watch?v=Uqg2wkiuNSA&t=12s
+
+##### VIF 계산
+
+unemployed 또는 egr 하나만 있을 때의 VIF는 2에 가까운 것을 감안하면, unemployed와 egr을 전부 포함하면 alone의 VIF가 7.539로 크게 증가하는 것을 확인할 수 있습니다. 이는 해석하는 이에 따라 공선성이 존재한다고 볼 수도, 유의미하지 않다고 볼 수도 있는 수치입니다.
+
+```{r}
+library(car)
+vif(mlr)
+```
+
+
+###### 변수간의 상관계수(r)
+
+상관계수(r): 두 변수가 함께 변하는 정도를 -1~ 1 범위의 수로 나타낸 것 <br/>
+일반적으로 r > 0.9 이상이면 (다중)공선성이 존재한다고 봅니다. <br/>
+
+```{r}
+# 실업률과 경제성장률의 상관계수
+cor(data3$egr, data3$unemployed)
+
+# 일인가구 비율과 실업률의 상관계수
+cor(data3$alone, data3$unemployed)
+
+# 실업률과 경제성장률의 상관계수
+cor(data3$egr, data3$alone)
+```
+
+
+```{r}
+data3
+library(PerformanceAnalytics)
+chart.Correlation(data3[,7:9])
+```
+
+
+
+##### 변수간의 공차한계 (tolerence)
+
+tolerence란 한 개의 독립변수를 종속변수로 나머지 독립변수를 독립변수로 하는 회귀분석을 했을 때 나오는 R-squared값을 이용, 1-R^2를 의미한다.
+- 만약 R^2가 1이면 독립변수 간에 심각한 상관관계가 있다는 것을 의미하며, tolerence는 이 경우에 0이 될 것이다.
+
+```{r}
+# 일인가구 비율의 공차가 0.133으로 높지만 0.1보다 작으므로 (다중)공선성이라고 판단되지는 않는다.
+tolerence1 <- lm(alone ~ unemployed + egr, data = data3)
+summary(tolerence1)
+
+tolerence2 <- lm(unemployed ~ alone + egr, data = data3)
+summary(tolerence2)
+
+tolerence3 <- lm(egr ~ unemployed + alone, data = data3)
+summary(tolerence3)
+
+```
+
+
+
+```{r}
+plot(mlr,1)
+```
+
+```{r}
+plot(mlr,2)
+```
+
+```{r}
+plot(mlr,3)
+```
+
+```{r}
+plot(mlr,4)
+```
+
+
+## 가설3: 2,30대는 40+에 비해 음주운전 횟수가 1인 가구 증가폭에 영향을 더 많이 받는다. (일단 보류)
+
+
+### 3A 20대 다중선형회귀
+
+
+#### 데이터 불러오기
+
+```{r}
+data_20s <- read.csv("../data/20대.csv", check.names = FALSE)
+
+data_20s
+```
+
+
+#### 20대 결측치 처리
+```{r}
+# 음주운전횟수로 일인가구 비율 회귀
+mod <- lm(일인가구비율 ~ 연도, data= data_20s)
+
+summary(mod)
+
+# 예측할 
+
+alone_pred <- predict(mod, data_20s)
+
+# 일인가구 비율을 예측
+alone_pred <- predict(mod, data_20s)
+
+alone_pred
+
+data_20s$alone_imputed <- round(ifelse(is.na(data_20s$일인가구비율),alone_pred, data_20s$일인가구비율),1)
+
+data_20s
+data3
+```
+
+##### 이상치 처리
+
+```{r}
+# 일인가구 비율은 이상치가 없음
+boxplot(data_20s$alone_imputed)
+# 실업률은 이상치 없음
+boxplot(data_20s$실업률)
+# 경제성장률은 이상치가 2010년과(상단 이상치) 2020년(하단 이상치)
+boxplot(data_20s$경제성장률)
+```
+
+##### 데이터 표준화
+
+```{r}
+# standardized percentage living alone
+data_20s$alone <- (data_20s$alone_imputed - mean(data_20s$alone_imputed)) / sd(data_20s$alone_imputed) 
+# standardized unemployment rate
+data_20s$unemployed <- (data_20s$실업률 - mean(data_20s$실업률) / sd(data_20s$실업률))
+# economic growth rate
+data_20s$egr <- (data_20s$경제성장률-mean(data_20s$경제성장률)/sd(data_20s$경제성장률))
+```
+
+
+##### 다중선형회귀
+
+표준화 처리 후 다중선형회귀식은 다음과 같음을 알 수 있습니다: y = -43027*(일인가구수) -23981*(실업률) + 6344 * (경제성장률) <br/>
+이를 통해 일인가구수, 경제성장률, 실업률 순으로 음주운전 횟수가 독립변수의 변동에 예민하게 반응한다는 것을 알 수 있습니다.
+<br/>
+인사이트: 평균 집단과는 다르게 실업률은 음주운전수와 양의 상관관계를 가진다는 것을 알 수 있습니다.
+
+
+```{r}
+mlr <- lm(음주운전수 ~ alone + unemployed + egr, data = data_20s)
+
+mlr
+# 회귀식은 다음과 같습니다:
+
+summary(mlr)
+```
+
+
+#### 회귀계수 표준화
+
+```{r}
+
+# lm.beta 패키지 install
+# install.packages("lm.beta")
+
+library(lm.beta)
+
+mlr <- lm(음주운전수 ~ alone + unemployed + egr, data = data_20s)
+
+# 표준화된 회귀 계수 추정
+
+std_coefs <- lm.beta(mlr)
+
+# 표준화된 회귀 계수 출력
+print(std_coefs)
+
+
+```
+
+
+#### 변수 선택
+stepAIC()와 ANOVA를 사용하여 20대에서는 일인가구 비율과 경제성장률 변수를 사용할 것을 추천 받았습니다.
+```{r}
+# library(MASS)
+mlr.stp <- stepAIC(mlr)
+
+mlr.stp$anova
+```
+
+#### 선택한 변수로 다시 모델 진단하기
+p value가 1/10 가량으로 낮아짐
+
+```{r}
+mlr <- lm(음주운전수 ~ alone + egr, data = data_20s)
+
+mlr
+# 회귀식은 다음과 같습니다:
+
+summary(mlr)
+data1
+```
+
+```{r}
+plot(mlr,1)
+```
+
+```{r}
+plot(mlr,2)
+```
+
+```{r}
+plot(mlr,3)
+```
+
+```{r}
+plot(mlr,4)
+```
+
+### 3B 30대 다중선형회귀
+
+
+#### 데이터 불러오기
+
+```{r}
+data_30s <- read.csv("../data/30대.csv", check.names = FALSE)
+
+data_30s
+```
+
+
+#### 30대 결측치 처리
+```{r}
+# 음주운전횟수로 일인가구 비율 회귀
+mod <- lm(일인가구비율 ~ 연도, data= data_30s)
+
+summary(mod)
+
+# 예측할 
+
+# 일인가구 비율을 예측
+alone_pred <- predict(mod, data_30s)
+
+alone_pred
+
+data_30s$alone_imputed <- round(ifelse(is.na(data_30s$일인가구비율),alone_pred, data_30s$일인가구비율),1)
+
+data_30s
+```
+
+##### 이상치 처리
+
+```{r}
+# 일인가구 비율은 이상치가 없음
+boxplot(data_30s$alone_imputed)
+# 실업률은 이상치 없음
+boxplot(data_30s$실업률)
+# 경제성장률은 이상치가 2010년과(상단 이상치) 2020년(하단 이상치)
+boxplot(data_30s$경제성장률)
+```
+
+##### 데이터 표준화
+
+```{r}
+# standardized percentage living alone
+data_30s$alone <- (data_30s$alone_imputed - mean(data_30s$alone_imputed)) / sd(data_30s$alone_imputed) 
+# standardized unemployment rate
+data_30s$unemployed <- (data_30s$실업률 - mean(data_30s$실업률) / sd(data_30s$실업률))
+# economic growth rate
+data_30s$egr <- (data_30s$경제성장률-mean(data_30s$경제성장률)/sd(data_30s$경제성장률))
+
+data_30s
+```
+
+
+##### 다중선형회귀
+
+표준화 처리 후 다중선형회귀식은 다음과 같음을 알 수 있습니다: y = -43027*(일인가구비율) -23981*(실업률) + 6344 * (경제성장률) <br/>
+이를 통해 일인가구수, 경제성장률, 실업률 순으로 음주운전 횟수가 독립변수의 변동에 예민하게 반응한다는 것을 알 수 있습니다.
+<br/>
+인사이트: 평균 집단과는 다르게 실업률은 음주운전수와 양의 상관관계를 가진다는 것을 알 수 있습니다.
+
+
+```{r}
+mlr <- lm(음주운전수 ~ alone + unemployed + egr, data = data_30s)
+
+summary(mlr)
+```
+
+
+
+#### 변수 선택
+stepAIC()와 ANOVA를 사용하여 30대에서는 일인가구 비율과 실업률 변수를 사용할 것을 추천 받았습니다.
+```{r}
+# library(MASS)
+mlr.stp <- stepAIC(mlr)
+
+mlr.stp$anova
+```
+
+
+#### 선택한 변수로 다시 모델 진단하기
+모델의 설명력 5% 증가, p value도 1/10 가량으로 낮아짐
+
+```{r}
+mlr <- lm(음주운전수 ~ alone + unemployed, data = data_30s)
+
+mlr
+# 회귀식은 다음과 같습니다:
+
+summary(mlr)
+```
+
+```{r}
+plot(mlr,1)
+```
+
+```{r}
+plot(mlr,2)
+```
+
+```{r}
+plot(mlr,3)
+```
+
+```{r}
+plot(mlr,4)
+```
+
+
+### 3C 40대 다중선형회귀
+
+
+#### 데이터 불러오기
+
+```{r}
+data_40s <- read.csv("../data/40대.csv", check.names = FALSE)
+
+data_40s
+```
+
+
+#### 결측치 처리
+```{r}
+# 음주운전횟수로 일인가구 비율 회귀
+mod <- lm(일인가구비율 ~ 연도, data= data_40s)
+
+summary(mod)
+
+# 예측할 
+
+# 일인가구 비율을 예측
+alone_pred <- predict(mod, data_40s)
+
+alone_pred
+
+data_40s$alone_imputed <- round(ifelse(is.na(data_40s$일인가구비율),alone_pred, data_40s$일인가구비율),1)
+
+data_40s
+```
+
+##### 이상치 처리
+
+```{r}
+# 일인가구 비율은 이상치가 없음
+boxplot(data_40s$alone_imputed)
+# 실업률은 이상치 없음
+boxplot(data_40s$실업률)
+# 경제성장률은 이상치가 2010년과(상단 이상치) 2020년(하단 이상치)
+boxplot(data_40s$경제성장률)
+```
+
+##### 데이터 표준화
+
+```{r}
+# standardized percentage living alone
+data_40s$alone <- (data_40s$alone_imputed - mean(data_40s$alone_imputed)) / sd(data_40s$alone_imputed) 
+# standardized unemployment rate
+data_40s$unemployed <- (data_40s$실업률 - mean(data_40s$실업률) / sd(data_40s$실업률))
+# economic growth rate
+data_40s$egr <- (data_40s$경제성장률-mean(data_40s$경제성장률)/sd(data_40s$경제성장률))
+
+data_40s
+```
+
+
+##### 다중선형회귀
+
+표준화 처리 후 다중선형회귀식은 다음과 같음을 알 수 있습니다: y = -43027*(일인가구비율) -23981*(실업률) + 6344 * (경제성장률) <br/>
+이를 통해 일인가구수, 경제성장률, 실업률 순으로 음주운전 횟수가 독립변수의 변동에 예민하게 반응한다는 것을 알 수 있습니다.
+<br/>
+인사이트: 평균 집단과는 다르게 실업률은 음주운전수와 양의 상관관계를 가진다는 것을 알 수 있습니다.
+
+
+```{r}
+mlr <- lm(음주운전수 ~ alone + unemployed + egr, data = data_40s)
+
+summary(mlr)
+```
+
+#### 변수 선택
+stepAIC()와 ANOVA를 사용하여 40대에서는 일인가구 비율과 경제성장률 변수를 사용할 것을 추천 받았습니다.
+```{r}
+# library(MASS)
+mlr.stp <- stepAIC(mlr)
+
+mlr.stp$anova
+```
+
+
+#### 선택한 변수로 다시 모델 진단하기
+모델의 설명력 4% 증가, p value도 1/10 가량으로 낮아짐
+
+```{r}
+mlr <- lm(음주운전수 ~ alone + egr, data = data_40s)
+
+mlr
+# 회귀식은 다음과 같습니다:
+
+summary(mlr)
+```
+
+
+### 3C 50대+ 다중선형회귀
+
+
+#### 데이터 불러오기
+
+```{r}
+data_50s <- read.csv("../data/50대+.csv", check.names = FALSE)
+
+data_50s
+```
+
+
+#### 결측치 처리
+```{r}
+# 음주운전횟수로 일인가구 비율 회귀
+mod <- lm(일인가구비율 ~ 연도, data= data_50s)
+
+summary(mod)
+
+# 일인가구 비율을 예측
+alone_pred <- predict(mod, data_50s)
+
+alone_pred
+
+data_50s$alone_imputed <- round(ifelse(is.na(data_50s$일인가구비율),alone_pred, data_50s$일인가구비율),1)
+
+data_50s
+```
+
+##### 이상치 처리
+
+```{r}
+# 일인가구 비율은 이상치가 없음
+boxplot(data_50s$alone_imputed)
+# 실업률은 이상치 없음
+boxplot(data_50s$실업률)
+# 경제성장률은 이상치가 2010년과(상단 이상치) 2020년(하단 이상치)
+boxplot(data_50s$경제성장률)
+```
+
+##### 데이터 표준화
+
+```{r}
+# standardized percentage living alone
+data_50s$alone <- (data_50s$alone_imputed - mean(data_50s$alone_imputed)) / sd(data_50s$alone_imputed) 
+# standardized unemployment rate
+data_50s$unemployed <- (data_50s$실업률 - mean(data_50s$실업률) / sd(data_50s$실업률))
+# economic growth rate
+data_50s$egr <- (data_50s$경제성장률-mean(data_50s$경제성장률)/sd(data_50s$경제성장률))
+
+data_50s
+```
+
+
+##### 다중선형회귀
+
+표준화 처리 후 다중선형회귀식은 다음과 같음을 알 수 있습니다: y = -43027*(일인가구비율) -23981*(실업률) + 6344 * (경제성장률) <br/>
+이를 통해 일인가구수, 경제성장률, 실업률 순으로 음주운전 횟수가 독립변수의 변동에 예민하게 반응한다는 것을 알 수 있습니다.
+<br/>
+인사이트: 평균 집단과는 다르게 실업률은 음주운전수와 양의 상관관계를 가진다는 것을 알 수 있습니다.
+
+
+```{r}
+mlr <- lm(음주운전수 ~ alone + unemployed + egr, data = data_50s)
+
+summary(mlr)
+```
+
+
+#### 변수 선택
+stepAIC()와 ANOVA를 사용하여 50대+에서는 일인가구 비율과 경제성장률 변수를 사용할 것을 추천 받았습니다.
+```{r}
+# library(MASS)
+mlr.stp <- stepAIC(mlr)
+
+mlr.stp$anova
+```
+
+#### 선택한 변수로 다시 모델 진단하기
+모델의 설명력 32% 증가, p value도 1/1000 가량으로 낮아짐
+
+##### 추천받은 변수
+
+```{r}
+mlr <- lm(음주운전수 ~ unemployed + egr, data = data_50s)
+
+mlr
+# 회귀식은 다음과 같습니다:
+
+summary(mlr)
+```
+
+
+##### 설명력이 더 높은 변수
+```{r}
+mlr <- lm(음주운전수 ~ alone + egr, data = data_20s)
+
+mlr
+# 회귀식은 다음과 같습니다:
+
+summary(mlr)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
